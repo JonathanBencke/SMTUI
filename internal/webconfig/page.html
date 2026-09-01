@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Service Manager — Configuração</title>
+<style>
+  :root {
+    --bg: #1e1e2e; --panel: #26263a; --panel2: #2f2f46; --border: #45475a;
+    --text: #cdd6f4; --dim: #9399b2; --accent: #7dd3fc; --accent2: #89b4fa;
+    --green: #22c55e; --red: #ef4444; --yellow: #eab308;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.5 system-ui, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    position: sticky; top: 0; z-index: 10;
+    background: var(--panel); border-bottom: 1px solid var(--border);
+    padding: 14px 22px; display: flex; align-items: center; gap: 16px;
+  }
+  header h1 { font-size: 18px; margin: 0; color: var(--accent); }
+  header .spacer { flex: 1; }
+  main { max-width: 980px; margin: 0 auto; padding: 22px; }
+  section { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 22px; }
+  section > h2 {
+    margin: 0; padding: 14px 18px; font-size: 15px; color: var(--accent);
+    border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px;
+  }
+  section > h2 .hint { font-weight: 400; font-size: 12px; color: var(--dim); }
+  .body { padding: 16px 18px; }
+  label { display: block; font-size: 12px; color: var(--dim); margin: 0 0 4px; }
+  input[type=text], input[type=number], textarea, select {
+    width: 100%; background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px;
+    font: inherit; outline: none;
+  }
+  input:focus, textarea:focus, select:focus { border-color: var(--accent); }
+  textarea { resize: vertical; min-height: 38px; font-family: ui-monospace, Consolas, monospace; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 120px; gap: 12px; }
+  .grid-auto { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+  .field { margin-bottom: 12px; }
+  .card { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-bottom: 14px; }
+  .card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .card-head input[type=text] { font-weight: 600; }
+  .kv-row { display: grid; grid-template-columns: 1fr 1.4fr auto; gap: 8px; margin-bottom: 8px; }
+  button {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 14px; font: inherit; cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #1e1e2e; border-color: var(--accent); font-weight: 600; }
+  button.danger { color: var(--red); }
+  button.small { padding: 4px 10px; font-size: 12px; }
+  .add-btn { background: transparent; border-style: dashed; width: 100%; color: var(--dim); }
+  .add-btn:hover { color: var(--accent); }
+  #toast {
+    position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px 20px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 50;
+  }
+  #toast.show { opacity: 1; }
+  #toast.ok { border-color: var(--green); color: var(--green); }
+  #toast.err { border-color: var(--red); color: var(--red); }
+  .muted { color: var(--dim); font-size: 12px; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
+  .tab {
+    background: transparent; border: none; border-bottom: 2px solid transparent;
+    border-radius: 0; padding: 10px 18px; color: var(--dim); cursor: pointer; font: inherit;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+  .badge {
+    display: inline-block; min-width: 18px; text-align: center;
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 10px;
+    padding: 0 7px; margin-left: 6px; font-size: 12px; color: var(--dim);
+  }
+  .hidden { display: none; }
+  .help { color: var(--dim); font-size: 12px; margin: 0 0 6px; }
+  .card-help {
+    background: rgba(125,211,252,.08); border: 1px solid var(--border);
+    border-left: 3px solid var(--accent); border-radius: 6px;
+    padding: 8px 12px; margin-bottom: 12px; font-size: 12.5px; color: var(--text);
+  }
+  .panel-intro { color: var(--dim); font-size: 13px; margin: 0 0 14px; }
+  .info-icon {
+    cursor: help; color: var(--dim); margin-left: 6px; font-size: 10px;
+    border: 1px solid var(--border); border-radius: 50%; width: 14px; height: 14px;
+    display: inline-flex; align-items: center; justify-content: center; vertical-align: middle;
+  }
+  .info-icon:hover { color: var(--accent); border-color: var(--accent); }
+  details.card-details { margin-top: 4px; }
+  details.card-details > summary,
+  details.advanced > summary {
+    cursor: pointer; color: var(--dim); font-size: 12.5px; padding: 6px 0; list-style: none;
+  }
+  details.card-details > summary::-webkit-details-marker,
+  details.advanced > summary::-webkit-details-marker { display: none; }
+  details.card-details > summary::before { content: "▸ "; }
+  details.card-details[open] > summary::before { content: "▾ "; }
+  details.advanced { margin-top: 14px; border-top: 1px dashed var(--border); padding-top: 10px; }
+  details.advanced > summary::before { content: "▸ "; }
+  details.advanced[open] > summary::before { content: "▾ "; }
+  .search-row { margin-bottom: 14px; }
+  .empty-state { text-align: center; padding: 30px 10px; color: var(--dim); }
+  .empty-state p { margin: 0 0 10px; }
+  #dirty-indicator { color: var(--yellow); font-size: 12px; white-space: nowrap; }
+</style>
+</head>
+<body>
+<header>
+  <h1>⚙ Service Manager — Configuração</h1>
+  <span class="muted" id="path"></span>
+  <span class="spacer"></span>
+  <span id="dirty-indicator" class="hidden">● alterações não salvas</span>
+  <button onclick="reloadClicked()">Recarregar</button>
+  <button class="primary" onclick="save()">✔ Salvar</button>
+</header>
+
+<main>
+  <nav class="tabs">
+    <button class="tab active" data-tab="services" onclick="showTab('services')">
+      Serviços <span class="badge" id="count-services">0</span>
+    </button>
+    <button class="tab" data-tab="env" onclick="showTab('env')">
+      Ambiente / Tenant <span class="badge" id="count-env">0</span>
+    </button>
+    <button class="tab" data-tab="presets" onclick="showTab('presets')">
+      Presets <span class="badge" id="count-presets">0</span>
+    </button>
+  </nav>
+
+  <section class="panel" id="panel-services">
+    <h2>Serviços <span class="hint">um bloco [[service]] por serviço</span></h2>
+    <div class="body">
+      <p class="panel-intro">Cada serviço = um processo que o TUI builda e roda. Escolha o <b>Preset</b> primeiro:
+        ele define <b>quais campos você precisa preencher</b> (os demais ficam escondidos automaticamente).</p>
+      <div class="search-row">
+        <input type="text" id="service-search" class="no-dirty" placeholder="Buscar serviço por nome..." oninput="onServiceSearch(this.value)" />
+      </div>
+      <div id="services"></div>
+      <button class="add-btn" onclick="addService()">+ adicionar serviço</button>
+    </div>
+  </section>
+
+  <section class="panel hidden" id="panel-env">
+    <h2>Ambiente / Tenant <span class="hint">variáveis compartilhadas por todos os serviços ([defaults.env])</span></h2>
+    <div class="body">
+      <div id="defaults-env"></div>
+      <button class="add-btn small" onclick="addDefaultEnv()">+ adicionar variável</button>
+    </div>
+  </section>
+
+  <section class="panel hidden" id="panel-presets">
+    <h2>Presets <span class="hint">como cada tipo de serviço builda e roda (templates Go, {{.Campo}})</span></h2>
+    <div class="body">
+      <div id="presets"></div>
+      <button class="add-btn" onclick="addPreset()">+ adicionar preset</button>
+    </div>
+  </section>
+</main>
+
+<div id="toast"></div>
+
+<script>
+"use strict";
+
+let state = { defaults: { env: {} }, presets: {}, services: [] };
+let serviceFilter = "";
+let dirty = false;
+
+function el(tag, attrs, children) {
+  const e = document.createElement(tag);
+  if (attrs) for (const k in attrs) {
+    if (k === "class") e.className = attrs[k];
+    else if (k.startsWith("on")) e[k] = attrs[k];
+    else if (k === "value") e.value = attrs[k];
+    else e.setAttribute(k, attrs[k]);
+  }
+  (children || []).forEach(c => e.appendChild(typeof c === "string" ? document.createTextNode(c) : c));
+  return e;
+}
+
+function toast(msg, kind) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = "show " + (kind || "");
+  setTimeout(() => { t.className = ""; }, 3200);
+}
+
+// ---- dirty (unsaved changes) tracking ----
+function markDirty() {
+  if (dirty) return;
+  dirty = true;
+  updateDirtyIndicator();
+}
+function clearDirty() {
+  dirty = false;
+  updateDirtyIndicator();
+}
+function updateDirtyIndicator() {
+  const ind = document.getElementById("dirty-indicator");
+  if (ind) ind.classList.toggle("hidden", !dirty);
+}
+function reloadClicked() {
+  if (dirty && !confirm("Você tem alterações não salvas. Recarregar mesmo assim e perdê-las?")) return;
+  reloadConfig();
+}
+window.addEventListener("beforeunload", (e) => {
+  if (dirty) { e.preventDefault(); e.returnValue = ""; }
+});
+
+async function reloadConfig() {
+  try {
+    const res = await fetch("/api/config");
+    if (!res.ok) throw new Error(await res.text());
+    const cfg = await res.json();
+    state = {
+      defaults: cfg.defaults || { env: {} },
+      presets: cfg.presets || {},
+      services: cfg.services || [],
+    };
+    if (!state.defaults.env) state.defaults.env = {};
+    serviceFilter = "";
+    const searchInput = document.getElementById("service-search");
+    if (searchInput) searchInput.value = "";
+    render();
+    clearDirty();
+  } catch (e) {
+    toast("Falha ao carregar: " + e.message, "err");
+  }
+}
+
+// ---- key/value editor ----
+function kvEditor(obj) {
+  const wrap = el("div");
+  const rerender = () => {
+    wrap.innerHTML = "";
+    Object.keys(obj).forEach(k => {
+      const keyInput = el("input", { type: "text", value: k, placeholder: "CHAVE" });
+      const valInput = el("input", { type: "text", value: obj[k], placeholder: "valor" });
+      keyInput.onchange = () => {
+        const nv = obj[k]; delete obj[k];
+        obj[keyInput.value] = valInput.value; void nv; rerender();
+      };
+      valInput.onchange = () => { obj[keyInput.value] = valInput.value; };
+      const del = el("button", { class: "small danger", onclick: () => { delete obj[k]; markDirty(); rerender(); } }, ["✕"]);
+      wrap.appendChild(el("div", { class: "kv-row" }, [keyInput, valInput, del]));
+    });
+  };
+  rerender();
+  wrap._addKey = () => {
+    let n = "NOVA_VAR"; let i = 1; while (obj[n]) { n = "NOVA_VAR_" + (i++); }
+    obj[n] = ""; markDirty(); rerender();
+  };
+  return wrap;
+}
+
+// ---- defaults env ----
+let defaultsEnvEditor;
+function renderDefaults() {
+  const c = document.getElementById("defaults-env");
+  c.innerHTML = "";
+  defaultsEnvEditor = kvEditor(state.defaults.env);
+  c.appendChild(defaultsEnvEditor);
+}
+function addDefaultEnv() { defaultsEnvEditor._addKey(); }
+
+// ---- services ----
+function presetOptions(selected) {
+  const sel = el("select");
+  sel.appendChild(el("option", { value: "" }, ["(sem preset — comando customizado)"]));
+  Object.keys(state.presets).sort().forEach(name => {
+    const o = el("option", { value: name }, [name]);
+    if (name === selected) o.selected = true;
+    sel.appendChild(o);
+  });
+  if (!selected) sel.value = "";
+  return sel;
+}
+
+function field(labelText, input, hint) {
+  const labelChildren = [labelText];
+  if (hint) labelChildren.push(el("span", { class: "info-icon", title: hint }, ["i"]));
+  const children = [el("label", null, labelChildren), input];
+  return el("div", { class: "field" }, children);
+}
+
+// Ambient variables provided by the runtime (never filled by the user).
+const AMBIENT_VARS = new Set(["Name", "Workdir", "Path"]);
+
+// presetUsedVars returns every template variable a preset references (built-in
+// + custom), excluding ambient ones — i.e. the fields the user must fill.
+function presetUsedVars(preset) {
+  if (!preset) return [];
+  const sources = [preset.build || "", preset.run || ""];
+  for (const k in (preset.env || {})) sources.push(preset.env[k]);
+  const found = new Set();
+  const re = /\{\{[^}]*\}\}/g, varRe = /\.([A-Z][A-Za-z0-9_]*)/g;
+  for (const src of sources) {
+    let m;
+    while ((m = re.exec(src)) !== null) {
+      let vm;
+      while ((vm = varRe.exec(m[0])) !== null) {
+        if (!AMBIENT_VARS.has(vm[1])) found.add(vm[1]);
+      }
+    }
+  }
+  return Array.from(found);
+}
+
+function friendlyVarName(v) {
+  switch (v) {
+    case "JavaHome": return "Java Home";
+    case "Modules": return "Módulos";
+    case "MainClass": return "Main Class / caminho do .bat";
+    case "Profiles": return "Perfis";
+    default: return v;
+  }
+}
+
+function onServiceSearch(v) {
+  serviceFilter = v;
+  renderServices();
+}
+
+function renderServices() {
+  const c = document.getElementById("services");
+  c.innerHTML = "";
+
+  if (state.services.length === 0) {
+    c.appendChild(el("div", { class: "empty-state" }, [
+      el("p", null, ["Nenhum serviço cadastrado ainda."]),
+      el("button", { class: "primary", onclick: () => addService() }, ["+ adicionar seu primeiro serviço"]),
+    ]));
+    return;
+  }
+
+  const filter = (serviceFilter || "").trim().toLowerCase();
+  const entries = state.services
+    .map((svc, idx) => ({ svc, idx }))
+    .filter(({ svc }) => !filter || (svc.name || "").toLowerCase().includes(filter));
+
+  if (entries.length === 0) {
+    c.appendChild(el("div", { class: "empty-state" }, [
+      el("p", null, ["Nenhum serviço encontrado para \"" + serviceFilter + "\"."]),
+    ]));
+    return;
+  }
+
+  entries.forEach(({ svc, idx }) => {
+    if (!svc.env) svc.env = {};
+    if (!svc.vars) svc.vars = {};
+    // Pre-list custom variables required by the selected preset (e.g.
+    // IntegrationPropertiesDir), so the user is prompted for them.
+    presetCustomVars(state.presets[svc.runner]).forEach(v => {
+      if (!(v in svc.vars)) svc.vars[v] = "";
+    });
+
+    const nameInput = el("input", { type: "text", value: svc.name || "", placeholder: "Meu Serviço" });
+    nameInput.onchange = () => { svc.name = nameInput.value; };
+
+    const runnerSel = presetOptions(svc.runner || "");
+    runnerSel.onchange = () => { svc.runner = runnerSel.value; renderServices(); };
+
+    const workdir = el("input", { type: "text", value: svc.workdir || "", placeholder: "../meu-projeto" });
+    workdir.onchange = () => { svc.workdir = workdir.value; };
+
+    const javaHome = el("input", { type: "text", value: svc.java_home || "", placeholder: "C:\\Program Files\\Java\\JDK17.0.16" });
+    javaHome.onchange = () => { svc.java_home = javaHome.value; };
+
+    const modules = el("input", { type: "text", value: (svc.modules || []).join(","), placeholder: "client,server" });
+    modules.onchange = () => { svc.modules = splitCsv(modules.value); };
+
+    const mainClass = el("input", { type: "text", value: svc.main_class || "", placeholder: "br.com.exemplo.MeuServer / caminho do .bat" });
+    mainClass.onchange = () => { svc.main_class = mainClass.value; };
+
+    const profiles = el("input", { type: "text", value: (svc.profiles || []).join(","), placeholder: "dev" });
+    profiles.onchange = () => { svc.profiles = splitCsv(profiles.value); };
+
+    const healthPort = el("input", { type: "number", value: svc.health_port || 0 });
+    healthPort.onchange = () => { svc.health_port = parseInt(healthPort.value || "0", 10); };
+
+    const buildCmd = el("input", { type: "text", value: svc.build_command || "", placeholder: "(opcional) sobrescreve o build do preset" });
+    buildCmd.onchange = () => { svc.build_command = buildCmd.value; };
+
+    const runCmd = el("input", { type: "text", value: svc.run_command || "", placeholder: "(opcional) sobrescreve o run do preset" });
+    runCmd.onchange = () => { svc.run_command = runCmd.value; };
+
+    const envEd = kvEditor(svc.env);
+    const varsEd = kvEditor(svc.vars);
+
+    const del = el("button", { class: "small danger", onclick: () => {
+      if (!confirm("Remover o serviço \"" + (svc.name || "(sem nome)") + "\"?")) return;
+      markDirty();
+      state.services.splice(idx, 1);
+      renderServices();
+    } }, ["✕ remover"]);
+    const head = el("div", { class: "card-head" }, [nameInput, el("span", { class: "spacer", style: "flex:1" }), del]);
+
+    // Which template variables the selected preset actually references —
+    // fields the preset doesn't use are hidden entirely instead of just noted.
+    const preset = state.presets[svc.runner];
+    const usedVars = svc.runner ? new Set(presetUsedVars(preset)) : new Set();
+    const showJavaHome = usedVars.has("JavaHome");
+    const showMainClass = usedVars.has("MainClass");
+    const showModules = usedVars.has("Modules");
+    const showProfiles = usedVars.has("Profiles");
+
+    // Dynamic guidance: which fields THIS preset actually uses.
+    const cardHelp = el("div", { class: "card-help" });
+    if (!svc.runner) {
+      cardHelp.innerHTML = "<b>Sem preset.</b> Preencha os comandos manualmente na seção <b>Avançado</b> abaixo: build_command (opcional) e run_command (obrigatório).";
+    } else {
+      const used = presetUsedVars(preset).map(friendlyVarName);
+      if (used.length) {
+        cardHelp.innerHTML = "Preset <b>" + svc.runner + "</b> — preencha, além de Workdir: <b>" + used.join(", ") + "</b>.";
+      } else {
+        cardHelp.innerHTML = "Preset <b>" + svc.runner + "</b> — precisa apenas de <b>Workdir</b>.";
+      }
+    }
+
+    const conditionalRows = [];
+    const row1 = [];
+    if (showJavaHome) row1.push(field("Java Home", javaHome, "Pasta do JDK (presets Java). Ex.: C:\\Program Files\\Java\\JDK17.0.16"));
+    if (showMainClass) row1.push(field("Main Class / caminho .bat", mainClass, "Java: classe main (br.com...Server). WildFly: caminho do .bat (…\\standalone.bat)."));
+    if (row1.length) conditionalRows.push(el("div", { class: "grid-auto" }, row1));
+
+    const row2 = [];
+    if (showModules) row2.push(field("Módulos (vírgula)", modules, "Módulos Maven (preset java-maven). Ex.: client,server"));
+    if (showProfiles) row2.push(field("Perfis (vírgula)", profiles, "Spring profiles. Vazio = nenhum. Ex.: dev"));
+    if (row2.length) conditionalRows.push(el("div", { class: "grid-auto" }, row2));
+
+    // Advanced section (build/run overrides + vars/env) collapses by default
+    // unless it already holds custom content, so it isn't missed on reopen.
+    const hasAdvancedContent = !!(
+      svc.build_command || svc.run_command ||
+      Object.keys(svc.vars).some(k => svc.vars[k]) ||
+      Object.keys(svc.env).length
+    );
+    if (svc._advancedOpen === undefined) svc._advancedOpen = hasAdvancedContent;
+    const advancedAttrs = svc._advancedOpen ? { class: "advanced", open: "" } : { class: "advanced" };
+    const advanced = el("details", advancedAttrs, [
+      el("summary", null, ["Avançado (comandos customizados, variáveis)"]),
+      field("build_command (override opcional)", buildCmd, "Deixe vazio para usar o build do preset. Preencha só para sobrescrever neste serviço."),
+      field("run_command (override opcional)", runCmd, "Deixe vazio para usar o run do preset. Obrigatório se o serviço não tiver preset."),
+      el("label", { style: "margin-top:4px" }, ["Variáveis do serviço ([service.vars])"]),
+      varsEd,
+      el("button", { class: "small add-btn", onclick: () => varsEd._addKey() }, ["+ variável"]),
+      el("label", { style: "margin-top:12px" }, ["Ambiente do serviço ([service.env])"]),
+      envEd,
+      el("button", { class: "small add-btn", onclick: () => envEd._addKey() }, ["+ variável de ambiente"]),
+    ]);
+    advanced.addEventListener("toggle", () => { svc._advancedOpen = advanced.open; });
+
+    // Whole-card accordion: with many services, only the ones just added stay
+    // open by default; with few services everything stays expanded as before.
+    if (svc._open === undefined) svc._open = state.services.length <= 5;
+    const summaryText = (svc.runner ? "Preset: " + svc.runner : "Sem preset") + (svc.workdir ? " · " + svc.workdir : "");
+    const detailsAttrs = svc._open ? { class: "card-details", open: "" } : { class: "card-details" };
+    const cardDetails = el("details", detailsAttrs, [
+      el("summary", null, [summaryText]),
+      field("Preset (runner)", runnerSel, "Define como o serviço builda e roda. Escolha primeiro — os campos abaixo mudam de acordo."),
+      cardHelp,
+      field("Workdir *", workdir, "Pasta onde os comandos rodam. Relativa ao services.toml (ou absoluta). Ex.: ../hcm-benefits-backend/java"),
+      ...conditionalRows,
+      field("Health Port", healthPort, "0 = desabilitado."),
+      advanced,
+    ]);
+    cardDetails.addEventListener("toggle", () => { svc._open = cardDetails.open; });
+
+    c.appendChild(el("div", { class: "card" }, [head, cardDetails]));
+  });
+}
+
+function addService() {
+  const svc = {
+    name: "Novo Serviço", workdir: "", runner: "", env: {}, vars: {},
+    modules: [], profiles: [], health_port: 0, _open: true, _advancedOpen: false,
+  };
+  state.services.push(svc);
+  markDirty();
+  serviceFilter = "";
+  const searchInput = document.getElementById("service-search");
+  if (searchInput) searchInput.value = "";
+  renderServices();
+  requestAnimationFrame(() => {
+    const cards = document.querySelectorAll("#services .card");
+    const last = cards[cards.length - 1];
+    if (!last) return;
+    last.scrollIntoView({ behavior: "smooth", block: "center" });
+    const sel = last.querySelector("select");
+    if (sel) sel.focus();
+  });
+}
+
+// ---- presets ----
+function renderPresets() {
+  const c = document.getElementById("presets");
+  c.innerHTML = "";
+  const names = Object.keys(state.presets).sort();
+
+  if (names.length === 0) {
+    c.appendChild(el("div", { class: "empty-state" }, [
+      el("p", null, ["Nenhum preset cadastrado ainda. Presets definem como cada tipo de serviço builda e roda."]),
+      el("button", { class: "primary", onclick: () => addPreset() }, ["+ adicionar seu primeiro preset"]),
+    ]));
+    return;
+  }
+
+  names.forEach(name => {
+    const p = state.presets[name];
+    if (!p.env) p.env = {};
+
+    const nameInput = el("input", { type: "text", value: name });
+    nameInput.onchange = () => {
+      const nn = nameInput.value.trim();
+      if (!nn || nn === name) return;
+      state.presets[nn] = state.presets[name]; delete state.presets[name]; renderPresets();
+    };
+    const build = el("textarea", null, []); build.value = p.build || "";
+    build.onchange = () => { p.build = build.value; };
+    const run = el("textarea", null, []); run.value = p.run || "";
+    run.onchange = () => { p.run = run.value; };
+    const sdlGenerateCommand = el("input", { type: "text", placeholder: "mvn clean generate-sources" });
+    sdlGenerateCommand.value = p.sdl_generate_command || "";
+    sdlGenerateCommand.onchange = () => { p.sdl_generate_command = sdlGenerateCommand.value; };
+    const envEd = kvEditor(p.env);
+    const del = el("button", { class: "small danger", onclick: () => {
+      if (!confirm("Remover o preset \"" + name + "\"? Serviços que usam esse preset ficarão sem preset (você precisará reconfigurar os comandos manualmente).")) return;
+      markDirty();
+      delete state.presets[name];
+      renderPresets();
+      renderServices();
+    } }, ["✕ remover"]);
+
+    c.appendChild(el("div", { class: "card" }, [
+      el("div", { class: "card-head" }, [el("strong", null, [name]), el("span", { style: "flex:1" }), del]),
+      field("Nome do preset", nameInput),
+      field("build (template)", build),
+      field("run (template)", run),
+      field("sdl_generate_command (opcional — usado na geração de fontes sob demanda: tecla \"r\" na TUI ou tool MCP generate_sources; nunca roda ao iniciar o serviço)", sdlGenerateCommand),
+      el("label", null, ["Ambiente do preset ([presets." + name + ".env])"]),
+      envEd,
+      el("button", { class: "small add-btn", onclick: () => envEd._addKey() }, ["+ variável de ambiente"]),
+    ]));
+  });
+}
+function addPreset() {
+  let n = "novo-preset"; let i = 1; while (state.presets[n]) { n = "novo-preset-" + (i++); }
+  state.presets[n] = { build: "", run: "", env: {} };
+  markDirty();
+  renderPresets();
+  requestAnimationFrame(() => {
+    const cards = document.querySelectorAll("#presets .card");
+    const last = cards[cards.length - 1];
+    if (!last) return;
+    last.scrollIntoView({ behavior: "smooth", block: "center" });
+    const inp = last.querySelector("input[type=text]");
+    if (inp) inp.focus();
+  });
+}
+
+function splitCsv(s) {
+  return (s || "").split(",").map(x => x.trim()).filter(x => x.length > 0);
+}
+
+// Built-in template variables that map to dedicated fields (or are ambient),
+// so they must NOT be prompted as custom [service.vars].
+const BUILTIN_VARS = new Set(["Name", "Workdir", "Path", "JavaHome", "Modules", "MainClass", "Profiles"]);
+
+// presetCustomVars scans a preset's build/run/env templates for {{.X}} and
+// returns the custom variables (excluding the built-ins above), e.g.
+// IntegrationPropertiesDir.
+function presetCustomVars(preset) {
+  if (!preset) return [];
+  const sources = [preset.build || "", preset.run || ""];
+  for (const k in (preset.env || {})) sources.push(preset.env[k]);
+  const found = new Set();
+  const re = /\{\{[^}]*\}\}/g;
+  const varRe = /\.([A-Z][A-Za-z0-9_]*)/g;
+  for (const src of sources) {
+    let m;
+    while ((m = re.exec(src)) !== null) {
+      let vm;
+      while ((vm = varRe.exec(m[0])) !== null) {
+        if (!BUILTIN_VARS.has(vm[1])) found.add(vm[1]);
+      }
+    }
+  }
+  return Array.from(found).sort();
+}
+
+function render() {
+  renderDefaults();
+  renderServices();
+  renderPresets();
+  const sc = document.getElementById("count-services");
+  if (sc) sc.textContent = state.services.length;
+  const ec = document.getElementById("count-env");
+  if (ec) ec.textContent = Object.keys(state.defaults.env || {}).length;
+  const pc = document.getElementById("count-presets");
+  if (pc) pc.textContent = Object.keys(state.presets).length;
+}
+
+function showTab(name) {
+  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === name));
+  document.querySelectorAll(".panel").forEach(p => p.classList.toggle("hidden", p.id !== "panel-" + name));
+}
+
+function buildPayload() {
+  // Assemble a clean object matching the server's JSON schema (only known keys).
+  const services = state.services.map(s => {
+    const o = { name: s.name || "", workdir: s.workdir || "" };
+    if (s.runner) o.runner = s.runner;
+    if (s.build_command) o.build_command = s.build_command;
+    if (s.run_command) o.run_command = s.run_command;
+    if (s.java_home) o.java_home = s.java_home;
+    if (s.main_class) o.main_class = s.main_class;
+    if (s.modules && s.modules.length) o.modules = s.modules;
+    if (s.profiles && s.profiles.length) o.profiles = s.profiles;
+    if (s.health_port) o.health_port = s.health_port;
+    if (s.env && Object.keys(s.env).length) o.env = s.env;
+    const vars = {};
+    for (const k in (s.vars || {})) { if (s.vars[k] !== "") vars[k] = s.vars[k]; }
+    if (Object.keys(vars).length) o.vars = vars;
+    return o;
+  });
+  const presets = {};
+  for (const name in state.presets) {
+    const p = state.presets[name]; const o = {};
+    if (p.build) o.build = p.build;
+    if (p.run) o.run = p.run;
+    if (p.sdl_generate_command) o.sdl_generate_command = p.sdl_generate_command;
+    if (p.env && Object.keys(p.env).length) o.env = p.env;
+    presets[name] = o;
+  }
+  const payload = { presets, services };
+  if (state.defaults.env && Object.keys(state.defaults.env).length) {
+    payload.defaults = { env: state.defaults.env };
+  } else {
+    payload.defaults = {};
+  }
+  return payload;
+}
+
+async function save() {
+  // Basic validation: every service needs a name and workdir.
+  for (const s of state.services) {
+    if (!s.name || !s.workdir) { toast("Todo serviço precisa de nome e workdir.", "err"); return; }
+  }
+  try {
+    const res = await fetch("/api/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildPayload()),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    toast("✔ Configuração salva! O TUI foi recarregado.", "ok");
+    clearDirty();
+  } catch (e) {
+    toast("Erro ao salvar: " + e.message, "err");
+  }
+}
+
+// Any real edit inside <main> (typing, selecting, checking) marks the config
+// as dirty, except controls explicitly opted out via the "no-dirty" class
+// (e.g. the service search box, which doesn't change saved state).
+(function installDirtyTracking() {
+  const mainEl = document.querySelector("main");
+  const handler = (e) => {
+    if (e.target && e.target.classList && e.target.classList.contains("no-dirty")) return;
+    markDirty();
+  };
+  mainEl.addEventListener("input", handler);
+  mainEl.addEventListener("change", handler);
+})();
+
+reloadConfig();
+</script>
+</body>
+</html>

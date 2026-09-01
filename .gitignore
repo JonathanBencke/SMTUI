@@ -1,0 +1,22 @@
+# Binaries
+*.exe
+bin/
+smtui
+smtui.exe
+
+# Generated Windows resource (icon embedded in exe)
+resource_windows_amd64.syso
+*.syso
+
+# Local configuration (may contain sensitive env vars / paths)
+services.toml
+integration.properties
+
+# Distributable packages
+dist/
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+.DS_Store
