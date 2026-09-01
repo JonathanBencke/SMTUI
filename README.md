@@ -2,7 +2,7 @@
 
 <img src="docs/logo.png" alt="SMTUI" width="160">
 
-# SMTUI
+# Service Manager Text UI
 
 [![Go](https://img.shields.io/badge/Go-1.23%2B-00ADD8?style=flat&logo=go&logoColor=white)](https://go.dev)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D6?style=flat&logo=windows&logoColor=white)](#-requisitos)
