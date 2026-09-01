@@ -1,15 +1,21 @@
-# ServiceManagerTUI
+<div align="center">
+
+<img src="docs/logo.png" alt="SMTUI" width="160">
+
+# SMTUI
 
 [![Go](https://img.shields.io/badge/Go-1.23%2B-00ADD8?style=flat&logo=go&logoColor=white)](https://go.dev)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D6?style=flat&logo=windows&logoColor=white)](#-requisitos)
 [![Release](https://img.shields.io/badge/release-latest-2ea44f?style=flat&logo=github)](https://github.com/JonathanBencke/SMTUI/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat)](./LICENSE)
 
+</div>
+
 Se você já perdeu a conta de quantos terminais abertos precisa pra rodar o
 ambiente local inteiro — um pro backend, outro pro frontend, mais um pro
 banco, outro pra ficar caçando log de erro — esse projeto é pra você.
 
-O ServiceManagerTUI é um painel de terminal (TUI) que junta todos esses
+O SMTUI é um painel de terminal (TUI) que junta todos esses
 processos numa tela só. Você liga e desliga cada serviço com uma tecla, vê os
 logs de todo mundo ao vivo, acompanha CPU/memória em tempo real e ainda expõe
 tudo isso por [MCP](https://modelcontextprotocol.io/) — ou seja, dá pra pedir
@@ -19,7 +25,7 @@ fazer isso por você.
 Feito com [Bubble Tea](https://github.com/charmbracelet/bubbletea). Hoje roda
 só em **Windows** (veja [Limitações](#-limitações)).
 
-![ServiceManagerTUI](docs/screenshot.png)
+![SMTUI](docs/screenshot.png)
 
 ## 🚀 Comece agora
 
