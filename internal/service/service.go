@@ -805,8 +805,8 @@ func (s *Service) idleStatus() Status {
 // first (it is not restarted afterwards), since the generation rewrites the
 // same generated sources the process is using.
 //
-// If the workdir does not sit inside an SDL project, the step is skipped: a
-// line is logged and the current status is preserved.
+// If the workdir does not sit inside an SDL project, the step is skipped unless
+// the preset explicitly enables generation in the service workdir.
 func (s *Service) GenerateSources() error {
 	s.mu.Lock()
 	current := s.status
@@ -823,8 +823,10 @@ func (s *Service) GenerateSources() error {
 		}
 	}
 
-	sdlRoot, ok := findSdlRoot(s.Workdir())
-	if !ok {
+	generateDir := s.Workdir()
+	if sdlRoot, ok := findSdlRoot(s.Workdir()); ok {
+		generateDir = sdlRoot
+	} else if !s.preset.GenerateInWorkdir {
 		s.emitLog(noSdlRootMessage)
 		return nil
 	}
@@ -833,10 +835,15 @@ func (s *Service) GenerateSources() error {
 		return err
 	}
 
-	cmdStr := s.sdlGenerateCommand()
+	cmdStr, err := renderTemplate("generate-sources", s.sdlGenerateCommand(), s.templateData())
+	if err != nil {
+		s.emitLog(fmt.Sprintf("Generating sources failed: %v", err))
+		s.setStatus(StatusCrashed, 0)
+		return err
+	}
 	s.emitLog(fmt.Sprintf("Generating sources (%s)...", cmdStr))
 
-	if err := s.runSyncStep(cmdStr, sdlRoot); err != nil {
+	if err := s.runSyncStep(cmdStr, generateDir); err != nil {
 		s.emitLog(fmt.Sprintf("Generating sources failed: %v", err))
 		s.setStatus(StatusCrashed, 0)
 		return err

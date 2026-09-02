@@ -209,12 +209,15 @@ JAVA_HOME = "{{.JavaHome}}"
 PATH      = "{{.JavaHome}}\\bin;{{.Path}}"
 ```
 
-#### Geração de fontes sob demanda pra projetos SDL/PDL/EDL
+#### Preparação sob demanda (geração de fontes, build, dependências)
 
 Projetos Senior SDL/PDL/EDL precisam rodar `mvn generate-sources` pra manter
 os fontes gerados (`client`/`server`) sincronizados com as definições
 `.sdl`/`.pdl`/`.edl`. O app roda esse passo **sob demanda** — nunca como parte
 de um start —, então iniciar um serviço é sempre só build + run, sem surpresa.
+
+O mesmo gancho serve pra qualquer preparação pesada que você não quer atrelada
+ao start: compilar módulos, instalar dependências do npm, etc.
 
 Dispare com a tecla `r` na TUI (veja os [atalhos](#-atalhos-do-teclado)) ou
 pela tool MCP `generate_sources`. Se o serviço estiver rodando, ele é parado
@@ -226,7 +229,8 @@ antes e **não** é reiniciado depois.
   do projeto, acima de `java/impl`).
 - Por padrão o comando é `mvn clean generate-sources` e roda na raiz do
   projeto encontrada (não no `workdir` do serviço).
-- Dá pra sobrescrever por preset com `sdl_generate_command`:
+- Dá pra sobrescrever por preset com `sdl_generate_command`. O comando é um
+  template Go, então aceita as mesmas variáveis do `build`/`run`:
 
   ```toml
   [presets.java-maven]
@@ -238,7 +242,19 @@ antes e **não** é reiniciado depois.
 - Se nenhum arquivo `.sdl` for encontrado, o pedido é ignorado e uma linha fica
   registrada no log (`No main.sdl found, skipping generate-sources`), sem
   mexer no status do serviço — ou seja, apertar `r` é inofensivo em serviços
-  que não são SDL (tipo `node-npm`, `wildfly`).
+  que não são SDL (tipo `wildfly`).
+- Pra usar o `r` em um projeto **sem** arquivo `.sdl`, marque
+  `generate_in_workdir = true` no preset: o comando passa a rodar no `workdir`
+  do serviço em vez da raiz SDL. É assim que o preset `node-npm` instala
+  dependências sem subir o app:
+
+  ```toml
+  [presets.node-npm]
+  run = "npm run dev"
+  sdl_generate_command = "npm install --no-audit --no-fund"
+  generate_in_workdir = true
+  ```
+
 - Enquanto o comando roda, o serviço mostra o status `generating`; se der
   erro, vira `crashed` e o erro fica no log.
 - Esse campo também pode ser editado pela
@@ -624,7 +640,7 @@ Rode `./smtui.exe`. Teclas:
 | `↑` / `↓`       | Rola os logs pra cima / pra baixo         |
 | `PgUp` / `PgDn` | Rola os logs de 10 em 10                  |
 | `g` / `G`       | Vai pro topo / fim dos logs               |
-| `r`             | Roda `generate-sources` só do serviço selecionado (sem build/run) |
+| `r`             | Roda o passo de preparação (`sdl_generate_command`) só do serviço selecionado, sem build/run |
 | `c`             | Abre a página web de configuração (serviços, tenant/env, presets) |
 | `m`             | Liga/desliga o servidor MCP               |
 | `q` / `Ctrl+C`  | Sai                                       |
@@ -632,11 +648,12 @@ Rode `./smtui.exe`. Teclas:
 Ícones de status: `●` rodando · `◐` buildando · `◒` gerando fontes · `◑`
 parando · `✖` crashado · `○` parado/idle.
 
-> Apertar `r` roda **só** o passo de geração de fontes do serviço
-> selecionado: se ele estiver rodando, é parado primeiro (e **não** é
-> reiniciado depois), o status vira `generating` enquanto o `mvn` trabalha, e
-> a saída é transmitida pro painel de log do serviço. Se o workdir não estiver
-> dentro de um projeto SDL, o passo é ignorado e o status fica como estava.
+> Apertar `r` roda **só** o passo de preparação do serviço selecionado
+> (`sdl_generate_command`): se ele estiver rodando, é parado primeiro (e **não**
+> é reiniciado depois), o status vira `generating` enquanto o comando trabalha,
+> e a saída é transmitida pro painel de log do serviço. Se o workdir não
+> estiver dentro de um projeto SDL e o preset não usar
+> `generate_in_workdir = true`, o passo é ignorado e o status fica como estava.
 
 > As variáveis de tenant/broker (`TENANT`, `VIRTUAL_HOST`, `BROKER_HOST`,
 > `BROKER_PORT`, `DIAGNOSTIC_PORT`) ficam em `[defaults.env]` e são

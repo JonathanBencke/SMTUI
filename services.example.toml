@@ -3,10 +3,10 @@
 # -----------------------------------------------------------------------------
 #  Este arquivo foi gerado automaticamente na primeira execucao.
 #
-#  Voce NAO precisa editar este arquivo na mao: use o assistente dentro do app
-#  (tecla "n") para cadastrar seus servicos de forma guiada. Ele detecta os
-#  campos necessarios a partir do preset escolhido e grava o bloco [[service]]
-#  aqui embaixo pra voce.
+#  Voce NAO precisa editar este arquivo na mao: pressione a tecla "c" dentro
+#  do app para abrir a pagina web de configuracao no navegador e cadastre seus
+#  servicos, presets, defaults e tenant de forma guiada. Ela grava o bloco
+#  [[service]] aqui embaixo pra voce.
 #
 #  Se preferir editar manualmente, os exemplos comentados abaixo mostram o
 #  formato de cada tipo de servico. Descomente e ajuste conforme necessario.
@@ -24,10 +24,10 @@ build = "mvn -pl {{.Modules}} -am install -DskipTests"
 run = "mvn -pl impl compile org.codehaus.mojo:exec-maven-plugin:3.2.0:java -Dexec.mainClass={{.MainClass}} -Dexec.classpathScope=runtime{{if .Profiles}} -Dexec.args=--spring.profiles.active={{.Profiles}}{{end}}"
 # Se o workdir do servico estiver dentro de um projeto Senior SDL/PDL/EDL (ou
 # seja, existe um arquivo *.sdl, como main.sdl ou career.sdl, em algum
-# diretorio pai, tipicamente workdir/../..), este comando roda automaticamente
-# na raiz do projeto ANTES do build, para manter os fontes gerados
-# (client/server) atualizados. Opcional: se omitido, o padrao
-# "mvn clean generate-sources" e usado.
+# diretorio pai, tipicamente workdir/../..), este comando e usado quando voce
+# pede a geracao de fontes SOB DEMANDA (tecla "r" na TUI ou tool MCP
+# generate_sources) e roda na raiz do projeto. Nunca roda ao iniciar o
+# servico. Opcional: se omitido, o padrao "mvn clean generate-sources" e usado.
 sdl_generate_command = "mvn clean generate-sources"
 [presets.java-maven.env]
 JAVA_HOME = "{{.JavaHome}}"
@@ -42,25 +42,29 @@ run = 'cmd /c "{{.MainClass}}"'
 JAVA_HOME = "{{.JavaHome}}"
 
 # Modulo Maven standalone executado in-process via exec-maven-plugin:java.
-# Antes de compilar, copia o integration.properties do diretorio informado
+# O atalho r / tool MCP generate_sources compila o integrador e o monitor sem
+# inicia-lo. Antes, copia o integration.properties do diretorio informado
 # ({{.IntegrationPropertiesDir}}) para o workdir, pois o Main carrega
 # ./integration.properties do diretorio atual. Defina o diretorio em
-# [service.vars] IntegrationPropertiesDir. Os --add-opens vao em MAVEN_OPTS
-# porque o exec:java roda na JVM do Maven.
+# [service.vars] IntegrationPropertiesDir. Se o frontend exigir uma versao
+# especifica de Node.js, aponte {{.NodeHome}} para ela em [service.vars]
+# NodeHome. Os --add-opens vao em MAVEN_OPTS porque o exec:java roda na JVM
+# do Maven.
 [presets.hcm-integration]
-build = 'cmd /c "copy /Y {{.IntegrationPropertiesDir}}\integration.properties integration.properties && mvn compile -DskipTests{{if .Profiles}} -P {{.Profiles}}{{end}}"'
 run = "mvn org.codehaus.mojo:exec-maven-plugin:3.2.0:java -Dexec.mainClass={{.MainClass}} -Dexec.classpathScope=runtime"
-# Idem ao preset java-maven: roda antes do build se um arquivo *.sdl for
-# detectado em um diretorio pai do workdir.
-sdl_generate_command = "mvn clean generate-sources"
+sdl_generate_command = 'cmd /c "copy /Y {{.IntegrationPropertiesDir}}\integration.properties integration.properties && pushd ..\hcm-updater && mvn clean package && popd && pushd ..\hcm-updater-integration && mvn clean package && popd && mvn clean package -DskipTests && pushd ..\hcm-monitor && npm install --no-audit --no-fund && npm run build && popd"'
+generate_in_workdir = true
 [presets.hcm-integration.env]
 JAVA_HOME = "{{.JavaHome}}"
-PATH = '{{.JavaHome}}\bin;{{.Path}}'
+PATH = '{{.NodeHome}};{{.JavaHome}}\bin;{{.Path}}'
 MAVEN_OPTS = "--add-opens java.base/java.time=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED"
 
 # Frontends Node.js/Angular em modo de desenvolvimento (run-only).
 [presets.node-npm]
 run = "npm run dev"
+# O atalho r / tool MCP generate_sources instala dependencias sem iniciar o app.
+sdl_generate_command = "npm install --no-audit --no-fund"
+generate_in_workdir = true
 
 # Spring Boot "nativo" (plugin oficial spring-boot-maven-plugin): build empacota
 # o artefato e run sobe a aplicacao com spring-boot:run, aplicando os perfis via
@@ -89,8 +93,8 @@ VIRTUAL_HOST = "seu-tenant"
 DIAGNOSTIC_PORT = "0"
 
 # -----------------------------------------------------------------------------
-#  SERVICOS — exemplos comentados. Prefira usar o assistente (tecla "n") para
-#  cadastrar; ou descomente um bloco abaixo e ajuste os valores.
+#  SERVICOS — exemplos comentados. Prefira usar a pagina web de configuracao
+#  (tecla "c") para cadastrar; ou descomente um bloco abaixo e ajuste os valores.
 # -----------------------------------------------------------------------------
 
 # Exemplo: backend Java/Maven

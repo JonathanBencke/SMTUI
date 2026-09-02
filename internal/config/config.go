@@ -42,6 +42,10 @@ type Preset struct {
 	// directory). It is never run as part of starting a service. Leave empty
 	// to use the default.
 	SdlGenerateCommand string `toml:"sdl_generate_command,omitempty" json:"sdl_generate_command,omitempty"`
+	// GenerateInWorkdir allows SdlGenerateCommand to run in the service workdir
+	// without requiring an SDL/PDL/EDL marker. Use it only for projects that
+	// expose an explicit, standalone source-generation command.
+	GenerateInWorkdir bool `toml:"generate_in_workdir,omitempty" json:"generate_in_workdir,omitempty"`
 }
 
 // templateActionRe matches Go template actions like {{.Modules}} or

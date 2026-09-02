@@ -456,6 +456,48 @@ func TestGenerateSources_NoSdlRoot_SkipsAndKeepsStatus(t *testing.T) {
 	}
 }
 
+func TestGenerateSources_ExplicitWorkdir_RunsWithoutSdlRoot(t *testing.T) {
+	workdir := t.TempDir()
+	preset := config.Preset{
+		SdlGenerateCommand: "cmd /c echo generating-in-workdir",
+		GenerateInWorkdir:  true,
+	}
+	s := New(config.ServiceConfig{Name: "svc", Workdir: workdir}, config.Defaults{}, preset, "")
+
+	if err := s.GenerateSources(); err != nil {
+		t.Fatalf("GenerateSources() error = %v", err)
+	}
+
+	logs := strings.Join(s.Logs(), "\n")
+	if !strings.Contains(logs, "generating-in-workdir") {
+		t.Errorf("logs should contain the explicit generation output:\n%s", logs)
+	}
+	if strings.Contains(logs, noSdlRootMessage) {
+		t.Errorf("logs should not skip an explicit generation command:\n%s", logs)
+	}
+}
+
+func TestGenerateSources_ExpandsCommandTemplate(t *testing.T) {
+	workdir := t.TempDir()
+	preset := config.Preset{
+		SdlGenerateCommand: "cmd /c echo {{.Marker}}",
+		GenerateInWorkdir:  true,
+	}
+	s := New(config.ServiceConfig{
+		Name:    "svc",
+		Workdir: workdir,
+		Vars:    map[string]string{"Marker": "template-expanded"},
+	}, config.Defaults{}, preset, "")
+
+	if err := s.GenerateSources(); err != nil {
+		t.Fatalf("GenerateSources() error = %v", err)
+	}
+
+	if logs := strings.Join(s.Logs(), "\n"); !strings.Contains(logs, "template-expanded") {
+		t.Errorf("logs should contain the expanded template value:\n%s", logs)
+	}
+}
+
 func TestGenerateSources_CommandFailure_SetsCrashed(t *testing.T) {
 	_, workdir := sdlProject(t)
 	preset := config.Preset{SdlGenerateCommand: "cmd /c exit 1"}

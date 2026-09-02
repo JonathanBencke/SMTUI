@@ -187,8 +187,15 @@ func TestWriteStarter(t *testing.T) {
 			t.Errorf("starter missing preset %q", name)
 		}
 	}
-	if b := cfg.Presets["hcm-integration"].Build; !strings.Contains(b, "{{.IntegrationPropertiesDir}}") {
-		t.Errorf("hcm-integration build should reference {{.IntegrationPropertiesDir}}, got: %s", b)
+	preset := cfg.Presets["hcm-integration"]
+	if preset.Build != "" {
+		t.Errorf("hcm-integration must not build during start, got: %s", preset.Build)
+	}
+	if !preset.GenerateInWorkdir {
+		t.Error("hcm-integration should allow explicit generation in its workdir")
+	}
+	if !strings.Contains(preset.SdlGenerateCommand, "{{.IntegrationPropertiesDir}}") {
+		t.Errorf("hcm-integration generation should reference {{.IntegrationPropertiesDir}}, got: %s", preset.SdlGenerateCommand)
 	}
 }
 

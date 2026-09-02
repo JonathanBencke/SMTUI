@@ -52,26 +52,29 @@ run = 'cmd /c "{{.MainClass}}"'
 JAVA_HOME = "{{.JavaHome}}"
 
 # Modulo Maven standalone executado in-process via exec-maven-plugin:java.
-# Antes de compilar, copia o integration.properties do diretorio informado
+# O atalho r / tool MCP generate_sources compila o integrador e o monitor sem
+# inicia-lo. Antes, copia o integration.properties do diretorio informado
 # ({{.IntegrationPropertiesDir}}) para o workdir, pois o Main carrega
 # ./integration.properties do diretorio atual. Defina o diretorio em
-# [service.vars] IntegrationPropertiesDir. Os --add-opens vao em MAVEN_OPTS
-# porque o exec:java roda na JVM do Maven.
+# [service.vars] IntegrationPropertiesDir. Se o frontend exigir uma versao
+# especifica de Node.js, aponte {{.NodeHome}} para ela em [service.vars]
+# NodeHome. Os --add-opens vao em MAVEN_OPTS porque o exec:java roda na JVM
+# do Maven.
 [presets.hcm-integration]
-build = 'cmd /c "copy /Y {{.IntegrationPropertiesDir}}\integration.properties integration.properties && mvn compile -DskipTests{{if .Profiles}} -P {{.Profiles}}{{end}}"'
 run = "mvn org.codehaus.mojo:exec-maven-plugin:3.2.0:java -Dexec.mainClass={{.MainClass}} -Dexec.classpathScope=runtime"
-# Idem ao preset java-maven: usado apenas na geracao de fontes sob demanda
-# (tecla "r" / tool MCP generate_sources), se um arquivo *.sdl for detectado
-# em um diretorio pai do workdir.
-sdl_generate_command = "mvn clean generate-sources"
+sdl_generate_command = 'cmd /c "copy /Y {{.IntegrationPropertiesDir}}\integration.properties integration.properties && pushd ..\hcm-updater && mvn clean package && popd && pushd ..\hcm-updater-integration && mvn clean package && popd && mvn clean package -DskipTests && pushd ..\hcm-monitor && npm install --no-audit --no-fund && npm run build && popd"'
+generate_in_workdir = true
 [presets.hcm-integration.env]
 JAVA_HOME = "{{.JavaHome}}"
-PATH = '{{.JavaHome}}\bin;{{.Path}}'
+PATH = '{{.NodeHome}};{{.JavaHome}}\bin;{{.Path}}'
 MAVEN_OPTS = "--add-opens java.base/java.time=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED"
 
 # Frontends Node.js/Angular em modo de desenvolvimento (run-only).
 [presets.node-npm]
 run = "npm run dev"
+# O atalho r / tool MCP generate_sources instala dependencias sem iniciar o app.
+sdl_generate_command = "npm install --no-audit --no-fund"
+generate_in_workdir = true
 
 # Spring Boot "nativo" (plugin oficial spring-boot-maven-plugin): build empacota
 # o artefato e run sobe a aplicacao com spring-boot:run, aplicando os perfis via
