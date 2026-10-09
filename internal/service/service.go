@@ -3,7 +3,7 @@ package service
 import (
 	"bufio"
 	"bytes"
-	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -76,11 +76,18 @@ type Service struct {
 	// StartAt to support running the service from a git worktree.
 	workdirOverride string
 	status          Status
-	cmd             *exec.Cmd
-	pid             int
-	pipe            io.ReadCloser
-	cancel          context.CancelFunc
-	prevCPU         float64
+	// run is the long-running process owned by the service, step the
+	// synchronous build/generate-sources command currently executing. Both
+	// are nil when nothing runs; Stop kills whichever is set.
+	run  *execution
+	step *execution
+	// generation identifies the current start attempt. Start bumps it and
+	// captures the value; Stop bumps it again, which tells an in-flight Start
+	// (e.g. still building) to abort instead of launching the run process,
+	// and keeps a stale goroutine from overwriting the status of a newer one.
+	generation uint64
+	pid        int
+	prevCPU    float64
 	prevStatsTime   time.Time
 	startedAt       time.Time
 	gitBranch       string
@@ -272,6 +279,31 @@ func (s *Service) setStatus(status Status, pid int) {
 	if cb != nil {
 		cb(s.cfg.Name, status, pid)
 	}
+}
+
+// setStatusIfCurrent updates the status only while gen is still the current
+// start attempt, so a Start cancelled by Stop never overwrites the state
+// Stop (or a newer Start) already set.
+func (s *Service) setStatusIfCurrent(gen uint64, status Status, pid int) {
+	s.mu.Lock()
+	if s.generation != gen {
+		s.mu.Unlock()
+		return
+	}
+	s.status = status
+	s.pid = pid
+	cb := s.onStatus
+	s.mu.Unlock()
+	if cb != nil {
+		cb(s.cfg.Name, status, pid)
+	}
+}
+
+// isCurrent reports whether gen is still the current start attempt.
+func (s *Service) isCurrent(gen uint64) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.generation == gen
 }
 
 // templateData exposes the variables available to build/run/env templates.
@@ -501,17 +533,28 @@ func (s *Service) runSyncStep(cmdStr, dir string) error {
 		return fmt.Errorf("create pipe: %w", err)
 	}
 
-	if err := cmd.Start(); err != nil {
+	ex, err := s.launch(cmd)
+	if err != nil {
 		return fmt.Errorf("failed to start: %w", err)
 	}
 
-	done := s.streamCombined(stdout, stderr)
-	<-done
+	// Registered so Stop can kill a build in progress instead of letting it
+	// run to completion (and then launch the run process) behind its back.
+	s.mu.Lock()
+	s.step = ex
+	s.mu.Unlock()
 
-	if err := cmd.Wait(); err != nil {
-		return err
+	<-s.streamCombined(stdout, stderr)
+	waitErr := cmd.Wait()
+
+	s.mu.Lock()
+	if s.step == ex {
+		s.step = nil
 	}
-	return nil
+	s.mu.Unlock()
+	ex.finish()
+
+	return waitErr
 }
 
 // startStep describes one synchronous step (currently the build) run before
@@ -638,23 +681,51 @@ func (s *Service) StartAt(workdir string) error {
 	return s.Start()
 }
 
-func (s *Service) Start() error {
+// errStartCancelled is returned by Start when Stop was requested while the
+// start was still in progress (typically during the build step).
+var errStartCancelled = errors.New("start cancelled by a stop request")
+
+// beginStart atomically checks that the service is free and moves it into
+// StatusBuilding, returning the generation that identifies this attempt.
+// Doing the check and the transition under the same lock is what prevents two
+// concurrent Start calls (TUI + MCP, double key press, start all) from both
+// passing the check and launching duplicate processes.
+func (s *Service) beginStart() (uint64, error) {
 	s.mu.Lock()
 	if isActive(s.status) {
 		st := s.status
 		s.mu.Unlock()
 		if st == StatusGenerating {
-			return fmt.Errorf("%s is generating sources", s.cfg.Name)
+			return 0, fmt.Errorf("%s is generating sources", s.cfg.Name)
 		}
-		return fmt.Errorf("%s already running", s.cfg.Name)
+		return 0, fmt.Errorf("%s already running", s.cfg.Name)
 	}
+	s.generation++
+	gen := s.generation
+	s.status = StatusBuilding
+	s.pid = 0
+	cb := s.onStatus
 	s.mu.Unlock()
+	if cb != nil {
+		cb(s.cfg.Name, StatusBuilding, 0)
+	}
+	return gen, nil
+}
+
+func (s *Service) cancelledStart() error {
+	s.emitLog("Start cancelled: a stop was requested")
+	return errStartCancelled
+}
+
+func (s *Service) Start() error {
+	gen, err := s.beginStart()
+	if err != nil {
+		return err
+	}
 
 	// Warms the git branch cache off the hot path: GitBranch() would
 	// otherwise pay for this exec.Command synchronously on the next render.
 	go s.RefreshGitBranch()
-
-	s.setStatus(StatusBuilding, 0)
 
 	steps := s.buildStartSteps()
 	total := len(steps) + 1 // + the run step, always present
@@ -662,15 +733,19 @@ func (s *Service) Start() error {
 	for i, step := range steps {
 		if step.resolveErr != nil {
 			s.emitLog(fmt.Sprintf("Cannot resolve build command: %v", step.resolveErr))
-			s.setStatus(StatusCrashed, 0)
+			s.setStatusIfCurrent(gen, StatusCrashed, 0)
 			return step.resolveErr
 		}
 
 		s.emitLog(fmt.Sprintf("[%d/%d] %s (%s)...", i+1, total, step.label, step.cmd))
 
-		if err := s.runSyncStep(step.cmd, step.dir); err != nil {
+		err := s.runSyncStep(step.cmd, step.dir)
+		if !s.isCurrent(gen) {
+			return s.cancelledStart()
+		}
+		if err != nil {
 			s.emitLog(fmt.Sprintf("%s failed: %v", step.label, err))
-			s.setStatus(StatusCrashed, 0)
+			s.setStatusIfCurrent(gen, StatusCrashed, 0)
 			return err
 		}
 	}
@@ -678,7 +753,7 @@ func (s *Service) Start() error {
 	runCmdStr, err := s.resolveCommand("run")
 	if err != nil {
 		s.emitLog(fmt.Sprintf("Cannot resolve run command: %v", err))
-		s.setStatus(StatusCrashed, 0)
+		s.setStatusIfCurrent(gen, StatusCrashed, 0)
 		return err
 	}
 
@@ -687,12 +762,11 @@ func (s *Service) Start() error {
 	runParts, err := shellSplit(runCmdStr)
 	if err != nil {
 		s.emitLog(fmt.Sprintf("Parse run command: %v", err))
-		s.setStatus(StatusCrashed, 0)
+		s.setStatusIfCurrent(gen, StatusCrashed, 0)
 		return err
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	runCmd := exec.CommandContext(ctx, runParts[0], runParts[1:]...)
+	runCmd := exec.Command(runParts[0], runParts[1:]...)
 	runCmd.Dir = s.Workdir()
 	runCmd.Env = s.env()
 	runCmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: createNoWindow}
@@ -700,73 +774,87 @@ func (s *Service) Start() error {
 	runStdout, err := runCmd.StdoutPipe()
 	if err != nil {
 		s.emitLog(fmt.Sprintf("Failed to create pipe: %v", err))
-		s.setStatus(StatusCrashed, 0)
-		cancel()
+		s.setStatusIfCurrent(gen, StatusCrashed, 0)
 		return err
 	}
 	runStderr, err := runCmd.StderrPipe()
 	if err != nil {
 		s.emitLog(fmt.Sprintf("Failed to create pipe: %v", err))
-		s.setStatus(StatusCrashed, 0)
-		cancel()
+		s.setStatusIfCurrent(gen, StatusCrashed, 0)
 		return err
 	}
 
-	if err := runCmd.Start(); err != nil {
+	ex, err := s.launch(runCmd)
+	if err != nil {
 		s.emitLog(fmt.Sprintf("Failed to start: %v", err))
-		s.setStatus(StatusCrashed, 0)
-		cancel()
+		s.setStatusIfCurrent(gen, StatusCrashed, 0)
 		return err
 	}
 
-	s.mu.Lock()
-	s.cmd = runCmd
-	s.pipe = runStdout
-	s.cancel = cancel
-	s.startedAt = time.Now()
-	s.mu.Unlock()
+	if !s.adoptRun(gen, ex) {
+		// Stop arrived between the build and the launch: the process must not
+		// survive untracked.
+		ex.kill()
+		_ = runCmd.Wait()
+		ex.finish()
+		return s.cancelledStart()
+	}
 
-	s.setStatus(StatusRunning, runCmd.Process.Pid)
-
-	go func() {
-		runDone := s.streamCombined(runStdout, runStderr)
-
-		waitCh := make(chan error, 1)
-		go func() {
-			waitCh <- runCmd.Wait()
-		}()
-
-		select {
-		case <-runDone:
-			err := <-waitCh
-			s.mu.Lock()
-			s.cmd = nil
-			s.pipe = nil
-			s.cancel = nil
-			s.mu.Unlock()
-			if err != nil {
-				s.emitLog(fmt.Sprintf("Process exited with error: %v", err))
-				s.setStatus(StatusCrashed, 0)
-			} else {
-				s.setStatus(StatusStopped, 0)
-			}
-		case err := <-waitCh:
-			<-runDone
-			s.mu.Lock()
-			s.cmd = nil
-			s.pipe = nil
-			s.cancel = nil
-			s.mu.Unlock()
-			if err != nil {
-				s.emitLog(fmt.Sprintf("Process exited with error: %v", err))
-				s.setStatus(StatusCrashed, 0)
-			} else {
-				s.setStatus(StatusStopped, 0)
-			}
-		}
-	}()
+	go s.watchRun(ex, runStdout, runStderr)
 
 	return nil
+}
+
+// adoptRun records ex as the service's run process and flips the status to
+// running, but only while gen is still the current start attempt. It returns
+// false when a Stop superseded the attempt; the caller then kills ex.
+func (s *Service) adoptRun(gen uint64, ex *execution) bool {
+	s.mu.Lock()
+	if s.generation != gen {
+		s.mu.Unlock()
+		return false
+	}
+	s.run = ex
+	s.startedAt = time.Now()
+	s.status = StatusRunning
+	s.pid = ex.pid()
+	cb := s.onStatus
+	s.mu.Unlock()
+	if cb != nil {
+		cb(s.cfg.Name, StatusRunning, ex.pid())
+	}
+	return true
+}
+
+// watchRun streams the run process output until it exits. It only touches
+// the service state if ex is still the tracked run process: once Stop (or a
+// newer Start) took over, a late exit of this process must not clear the
+// tracking of — or report a crash for — the process that replaced it.
+func (s *Service) watchRun(ex *execution, stdout, stderr io.Reader) {
+	runDone := s.streamCombined(stdout, stderr)
+	err := ex.cmd.Wait()
+	<-runDone
+
+	s.mu.Lock()
+	current := s.run == ex
+	if current {
+		s.run = nil
+	}
+	s.mu.Unlock()
+
+	// Kills any descendant left behind (e.g. a JVM forked by a launcher
+	// script that already exited) before reporting the service as down.
+	ex.finish()
+
+	if !current {
+		return
+	}
+	if err != nil {
+		s.emitLog(fmt.Sprintf("Process exited with error: %v", err))
+		s.setStatus(StatusCrashed, 0)
+		return
+	}
+	s.setStatus(StatusStopped, 0)
 }
 
 // beginGenerating atomically transitions the service into StatusGenerating,
@@ -778,6 +866,13 @@ func (s *Service) beginGenerating() error {
 	if s.status == StatusGenerating {
 		s.mu.Unlock()
 		return fmt.Errorf("%s is already generating sources", s.cfg.Name)
+	}
+	if isActive(s.status) {
+		// A start slipped in between the stop and this transition: generating
+		// now would rewrite the sources under a live process.
+		st := s.status
+		s.mu.Unlock()
+		return fmt.Errorf("%s is %s: stop it before generating sources", s.cfg.Name, st)
 	}
 	s.status = StatusGenerating
 	s.pid = 0
@@ -854,6 +949,15 @@ func (s *Service) GenerateSources() error {
 	return nil
 }
 
+// stopWaitTimeout bounds how long Stop waits for a killed process to be
+// reaped before reporting the service as stopped anyway.
+const stopWaitTimeout = 10 * time.Second
+
+// Stop force-kills whatever the service is running — the run process and/or
+// an in-progress build step — and waits for it to actually exit before
+// reporting StatusStopped. It also cancels an in-flight Start, so a stop
+// requested during the build no longer lets the run process come up
+// afterwards.
 func (s *Service) Stop() error {
 	s.mu.Lock()
 	if s.status == StatusStopping || s.status == StatusStopped || s.status == StatusGenerating {
@@ -864,51 +968,46 @@ func (s *Service) Stop() error {
 		}
 		return fmt.Errorf("%s is not running", s.cfg.Name)
 	}
-	cmd := s.cmd
-	pipe := s.pipe
-	cancel := s.cancel
+	wasBuilding := s.status == StatusBuilding
+	s.generation++
+	run, step := s.run, s.step
+	// Detach the run process right away so its watcher goroutine sees it is
+	// no longer current and does not report the kill as a crash.
+	s.run = nil
 	s.status = StatusStopping
+	pid := s.pid
+	cb := s.onStatus
 	s.mu.Unlock()
+	if cb != nil {
+		cb(s.cfg.Name, StatusStopping, pid)
+	}
 
-	if cmd == nil || cmd.Process == nil {
+	if run == nil && step == nil {
 		s.setStatus(StatusStopped, 0)
+		if wasBuilding {
+			return nil
+		}
 		return fmt.Errorf("%s is not running", s.cfg.Name)
 	}
 
-	pid := cmd.Process.Pid
-	s.emitLog(fmt.Sprintf("Force stopping (PID %d)...", pid))
-
-	kill := exec.Command("taskkill", "/F", "/T", "/PID", fmt.Sprintf("%d", pid))
-	kill.SysProcAttr = &syscall.SysProcAttr{CreationFlags: createNoWindow}
-	kill.CombinedOutput()
-
-	if cancel != nil {
-		cancel()
+	for _, ex := range []*execution{step, run} {
+		if ex == nil {
+			continue
+		}
+		s.emitLog(fmt.Sprintf("Force stopping (PID %d)...", ex.pid()))
+		ex.kill()
+	}
+	for _, ex := range []*execution{step, run} {
+		if ex == nil {
+			continue
+		}
+		select {
+		case <-ex.done:
+		case <-time.After(stopWaitTimeout):
+			s.emitLog(fmt.Sprintf("Warning: PID %d did not exit within %s; it may still be alive", ex.pid(), stopWaitTimeout))
+		}
 	}
 
-	cmd.Process.Kill()
-
-	if pipe != nil {
-		pipe.Close()
-	}
-
-	done := make(chan struct{})
-	go func() {
-		childKill := exec.Command("taskkill", "/F", "/T", "/PID", fmt.Sprintf("%d", pid))
-		childKill.SysProcAttr = &syscall.SysProcAttr{CreationFlags: createNoWindow}
-		childKill.CombinedOutput()
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(3 * time.Second):
-	}
-
-	s.mu.Lock()
-	s.cmd = nil
-	s.pipe = nil
-	s.cancel = nil
-	s.mu.Unlock()
 	s.setStatus(StatusStopped, 0)
 	return nil
 }

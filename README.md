@@ -782,6 +782,18 @@ Como funciona:
 ./smtui.exe -mcp
 ```
 
+> Só pode existir **um** `smtui` por `services.toml`: uma segunda instância
+> (outra TUI ou um `-mcp` com a TUI aberta) é recusada na largada, porque ela
+> teria um gerenciador próprio, cego aos processos da primeira, e poderia subir
+> serviços duplicados. Com a TUI aberta, conecte o cliente nela
+> (`-install-mcp`). Quando a sessão stdio termina, os serviços que o `-mcp`
+> subiu são parados.
+>
+> Todo processo iniciado (build, run, generate) fica num Job Object do Windows:
+> parar um serviço mata a árvore inteira, inclusive netos cujo pai já morreu, e
+> se o `smtui` morrer de qualquer jeito (crash, janela fechada no X) o Windows
+> derruba tudo junto — nada fica órfão.
+
 Exemplo de config do Claude Code (`.claude.json` ou equivalente):
 
 ```json

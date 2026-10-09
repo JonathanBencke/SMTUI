@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"unsafe"
 
 	"github.com/JonathanBencke/ServiceManagerTUI/internal/config"
+	"github.com/JonathanBencke/ServiceManagerTUI/internal/instance"
 	"github.com/JonathanBencke/ServiceManagerTUI/internal/kiro"
 	"github.com/JonathanBencke/ServiceManagerTUI/internal/mcp"
 	"github.com/JonathanBencke/ServiceManagerTUI/internal/service"
@@ -77,12 +79,35 @@ func main() {
 		cfgPath = flag.Arg(0)
 	}
 
+	lock, err := instance.Acquire(cfgPath)
+	if err != nil {
+		reportInstanceLockError(err, *mcpMode, cfgPath)
+		os.Exit(1)
+	}
+	defer lock.Release()
+
 	if *mcpMode {
 		runMCP(cfgPath)
 		return
 	}
 
 	runTUI(cfgPath)
+}
+
+// reportInstanceLockError explains why smtui refused to start. A second
+// instance on the same config would own a separate service manager, blind to
+// the first one's processes, and could start duplicates of every service.
+func reportInstanceLockError(err error, mcpMode bool, cfgPath string) {
+	if !errors.Is(err, instance.ErrAlreadyRunning) {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return
+	}
+	fmt.Fprintf(os.Stderr, "Error: smtui is already running for %s.\n", cfgPath)
+	if mcpMode {
+		fmt.Fprintf(os.Stderr, "Connect your MCP client to the running TUI instead (http://127.0.0.1:%d/mcp); run 'smtui.exe -install-mcp' to register it.\n", mcp.DefaultPort)
+		return
+	}
+	fmt.Fprintln(os.Stderr, "Use the open window (or close it / stop the 'smtui.exe -mcp' process) before starting another one.")
 }
 
 // runInstallMCP registers the TUI's running SSE server as an MCP server in
@@ -123,11 +148,22 @@ func runMCP(cfgPath string) {
 		os.Exit(1)
 	}
 
-	if err := srv.Serve(); err != nil {
-		fmt.Fprintf(os.Stderr, "MCP server error: %v\n", err)
+	serveErr := srv.Serve()
+
+	// The stdio session is over (client disconnected or signal): the
+	// services this process started must not outlive it.
+	if manager := srv.Manager(); manager != nil && manager.RunningCount() > 0 {
+		manager.StopAllSync(shutdownStopTimeout)
+	}
+
+	if serveErr != nil {
+		fmt.Fprintf(os.Stderr, "MCP server error: %v\n", serveErr)
 		os.Exit(1)
 	}
 }
+
+// shutdownStopTimeout bounds how long smtui waits for services to stop on exit.
+const shutdownStopTimeout = 15 * time.Second
 
 // startupInfo carries the resolved configuration and whether the TUI should
 // open on the onboarding screen (first run or no services configured yet).
@@ -240,7 +276,7 @@ func runTUI(cfgPath string) {
 		}
 		webSrv.Stop()
 		if manager.RunningCount() > 0 {
-			manager.StopAllSync(15 * time.Second)
+			manager.StopAllSync(shutdownStopTimeout)
 		}
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -250,7 +286,7 @@ func runTUI(cfgPath string) {
 
 	if manager.RunningCount() > 0 {
 		setConsoleTitle("Service Manager - stopping services...")
-		manager.StopAllSync(15 * time.Second)
+		manager.StopAllSync(shutdownStopTimeout)
 	}
 
 	if mcpSrv.IsRunning() {
